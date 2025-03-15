@@ -9,11 +9,14 @@ const XLSX = require('xlsx');
 const app = express();
 const PORT = 3000;
 
+require('dotenv').config();
+
 app.use(express.json());
 
 // Ensure invoices and credit-notes folders exist
 const invoicesDir = path.join(__dirname, 'invoices');
 const creditNotesDir = path.join(__dirname, 'credit-notes');
+
 if (!fs.existsSync(invoicesDir)) fs.mkdirSync(invoicesDir);
 if (!fs.existsSync(creditNotesDir)) fs.mkdirSync(creditNotesDir);
 
@@ -66,7 +69,7 @@ function writeProcessedNumber(number) {
 app.get('/get-invoice-items', async (req, res) => {
     const pin = '0000';
     // const deviceIP = '100.100.2.151'; // live IP device
-    const deviceIP = '192.168.100.50'; // live IP device
+    const deviceIP = process.env.DEVICE_IP; // live IP device
 
     if (!pin) {
         return res.status(400).json({ error: 'Pin is required' });
@@ -187,6 +190,100 @@ function convertExcelToJson() {
         console.error('Error converting Excel to JSON:', error);
     }
 }
+
+function findEmptyInvoices() {
+    try {
+        const emptyInvoices = [];
+
+        // Read all files from the invoices directory
+        const invoiceFiles = fs.readdirSync(invoicesDir);
+
+        invoiceFiles.forEach(file => {
+            const filePath = path.join(invoicesDir, file);
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+
+            try {
+                const data = JSON.parse(fileContent);
+
+                // Check if the data is empty or missing items
+                if (Object.keys(data).length === 0 || !data.items || data.items.length === 0) {
+                    emptyInvoices.push(file.replace('.json', ''));
+                }
+            } catch (error) {
+                console.error(`Error parsing JSON for file ${file}:`, error);
+            }
+        });
+
+        // Save the result to a JSON file
+        const outputPath = path.join(__dirname, 'emptyInvoices.json');
+        fs.writeFileSync(outputPath, JSON.stringify({ emptyInvoices }, null, 2));
+
+        console.log(`Empty invoices saved to ${outputPath}`);
+    } catch (error) {
+        console.error('Error finding empty invoices:', error);
+    }
+}
+
+// findEmptyInvoices();
+
+function removeEmptyFromProcessed() {
+    try {
+        const processedNumbersPath = path.join(__dirname, 'processedNumbers.json');
+        const emptyInvoicesPath = path.join(__dirname, 'emptyInvoices.json');
+
+        if (!fs.existsSync(processedNumbersPath) || !fs.existsSync(emptyInvoicesPath)) {
+            console.error('❌ One or both files (processedNumbers.json, emptyInvoices.json) are missing.');
+            return;
+        }
+
+        // Read and parse processed numbers
+        let processedNumbers = JSON.parse(fs.readFileSync(processedNumbersPath, 'utf8')).map(num => String(num).trim());
+
+        // Read and parse empty invoices
+        const emptyInvoicesData = JSON.parse(fs.readFileSync(emptyInvoicesPath, 'utf8'));
+        const emptyInvoices = emptyInvoicesData.emptyInvoices.map(num => String(num).trim());
+
+        if (!Array.isArray(emptyInvoices)) {
+            console.error('❌ Empty invoices data is not an array.');
+            return;
+        }
+
+        // Filter out empty invoices from processed numbers
+        const updatedProcessed = processedNumbers.filter(number => !emptyInvoices.includes(number));
+
+        fs.writeFileSync(processedNumbersPath, JSON.stringify(updatedProcessed, null, 2));
+        console.log('✅ Empty invoices have been successfully removed from processedNumbers.json');
+    } catch (error) {
+        console.error('❌ Error removing empty invoices:', error.message);
+    }
+}
+
+//removeEmptyFromProcessed();
+
+// Function to remove empty JSON files from a directory
+function removeEmptyJsonFiles(directory) {
+    fs.readdirSync(directory).forEach(file => {
+        const filePath = path.join(directory, file);
+        if (fs.existsSync(filePath)) {
+            const content = fs.readFileSync(filePath, 'utf8');
+            try {
+                const jsonData = JSON.parse(content);
+                if (Object.keys(jsonData).length === 0) {
+                    fs.unlinkSync(filePath);
+                    console.log(`Deleted empty file: ${filePath}`);
+                }
+            } catch (error) {
+                console.error(`Error parsing JSON in file: ${filePath}`, error);
+            }
+        }
+    });
+}
+
+// Execute the removal for both directories
+// removeEmptyJsonFiles(invoicesDir);
+// removeEmptyJsonFiles(creditNotesDir);
+
+// console.log('Empty JSON files removal process completed.');
 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
