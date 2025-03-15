@@ -1,0 +1,7 @@
+.env
+node_modules/
+credit-notes/
+invoices/
+SALESDATA.*
+processedNumbers.*
+RelevantNumbers.*
