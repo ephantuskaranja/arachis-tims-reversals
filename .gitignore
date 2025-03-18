@@ -5,3 +5,5 @@ invoices/
 SALESDATA.*
 processedNumbers.*
 RelevantNumbers.*
+processed-credit-notes.*
+credit-note-responses/

@@ -285,6 +285,93 @@ function removeEmptyJsonFiles(directory) {
 
 // console.log('Empty JSON files removal process completed.');
 
+const creditNoteResponsesDir = path.join(__dirname, 'credit-note-responses');
+if (!fs.existsSync(creditNoteResponsesDir)) fs.mkdirSync(creditNoteResponsesDir);
+
+const processedCreditNotesFile = path.join(__dirname, 'processed-credit-notes.json');
+
+// Load processed credit notes or initialize if not existing
+let processedCreditNotes = [];
+if (fs.existsSync(processedCreditNotesFile)) {
+    processedCreditNotes = JSON.parse(fs.readFileSync(processedCreditNotesFile, 'utf8'));
+}
+
+// Function to push credit notes and store responses
+async function pushCreditNotes() {
+    const pin = '0000';
+    const deviceIP = process.env.DEVICE_IP;
+
+    console.log(deviceIP);
+
+    // Verify PIN first
+    const verifyPinResponse = await verifyPin(deviceIP, pin);
+    if (verifyPinResponse !== '0100') {
+        console.error('PIN verification failed:', verifyPinResponse);
+        return;
+    }
+
+    console.log('PIN verified successfully.');
+
+    const creditNoteFiles = fs.readdirSync(creditNotesDir);
+
+    for (const file of creditNoteFiles) {
+        if (processedCreditNotes.includes(file)) {
+            console.log(`Skipping already processed credit note: ${file}`);
+            continue;
+        }
+
+        const filePath = path.join(creditNotesDir, file);
+        const creditNoteData = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+
+        console.log(`Pushing credit note for ${file}`);
+        console.log('Credit note data:', creditNoteData);
+
+        try {
+            // Log the exact request data
+            console.log('Sending Credit Note Data:', JSON.stringify(creditNoteData, null, 2));
+
+            const response = await axiosInstance.post(
+                `http://${deviceIP}:8086/api/v3/invoices`,
+                creditNoteData,
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    httpAgent: agent
+                }
+            );
+
+            // Check if the response contains an error
+            let responseFileName = file;
+            if (response.data && response.data.modelState) {
+                responseFileName = `error_${file}`;
+            }
+
+            // Save the response in the credit-note-responses folder
+            fs.writeFileSync(
+                path.join(creditNoteResponsesDir, responseFileName),
+                JSON.stringify(response.data, null, 2)
+            );
+
+            // Track the processed credit note
+            processedCreditNotes.push(file);
+            fs.writeFileSync(
+                processedCreditNotesFile,
+                JSON.stringify(processedCreditNotes, null, 2)
+            );
+
+            console.log(`Response saved and marked as processed for ${file}`);
+        } catch (error) {
+            console.error(`Error pushing credit note for ${file}:`, error.message);
+        }
+    }
+
+    console.log('All credit notes processed.');
+}
+
+pushCreditNotes();
+
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });
