@@ -7,3 +7,4 @@ processedNumbers.*
 RelevantNumbers.*
 processed-credit-notes.*
 credit-note-responses/
+emptyInvoices.*
